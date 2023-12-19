@@ -1,29 +1,24 @@
 import { faker } from "@faker-js/faker";
-import { Client } from "pg";
-import { loadEnvConfig } from "@next/env";
+import { getClient } from "@/db";
+import bcrypt from "bcrypt";
 
-loadEnvConfig(process.cwd());
-// create client , with key value pair method insid the loadFakeData() function
 async function loadFakeData(numUsers: number) {
   console.log(`loading ${numUsers} users..`);
-  const client = new Client({
-    connectionString: process.env.DB_URL,
-    ssl: {
-      rejectUnauthorized: false,
-    },
-  });
+
+  const client = await getClient();
   try {
-    await client.connect();
     console.log("Connected successfully");
     await client.query("begin");
-    // WRITE FOR LOOP WITH PARAMETERIZED QUERY , USERNAME, PASSWORD, AVATAR
+
     for (let i = 0; i < numUsers; i++) {
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash("password", saltRounds);
+
       const username = faker.internet.userName();
-      const password = "password";
       const avatar = faker.image.avatar();
       await client.query(
         "INSERT INTO users (username, password, avatar) VALUES ($1, $2, $3)",
-        [username, password, avatar]
+        [username, hashedPassword, avatar]
       );
     }
     console.log(`inserted ${numUsers} fake users.`);
@@ -44,6 +39,20 @@ async function loadFakeData(numUsers: number) {
       }
     }
     console.log(`inserted  fake posts every one randomly`);
+
+    // now generate for follows table, insert query(follower_id, user_id), before query check if they same user using if statement after randomly follow or not so use Math.random > 0.5
+    for (const user of users.rows) {
+      for (const otherUser of users.rows) {
+        if (user.id !== otherUser.id && Math.random() > 0.5) {
+          await client.query(
+            "INSERT INTO follows (follower_id, user_id) VALUES ($1, $2)",
+            [user.id, otherUser.id]
+          );
+        }
+      }
+    }
+    console.log(`inserted fake follows`);
+
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");
